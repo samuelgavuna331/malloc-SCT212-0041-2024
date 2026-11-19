@@ -116,3 +116,38 @@ void *memory = sbrk((intptr_t)total);
 
     return block;
 }
+/* Allocate memory using the first-fit placement policy. */
+void *my_malloc(size_t size)
+{
+    /* A zero-size allocation returns NULL. */
+    if (size == 0)
+        return NULL;
+
+    /* Align the requested size to 16 bytes. */
+    size_t aligned_size = align_up(size);
+
+    if (aligned_size == 0)
+        return NULL;
+
+    /* Search the free list using first-fit. */
+    block_t *current = free_head;
+
+    while (current != NULL) {
+        if (current->free && current->size >= aligned_size) {
+            current->free = 0;
+            return payload(current);
+        }
+
+        current = current->next;
+    }
+
+    /* No suitable free block exists, so grow the heap. */
+    block_t *new_block = grow(aligned_size);
+
+    if (new_block == NULL)
+        return NULL;
+
+    new_block->free = 0;
+
+    return payload(new_block);
+}

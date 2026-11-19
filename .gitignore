@@ -3,3 +3,4 @@ bench
 task1_check
 *.o
 task2_check
+task3_check
