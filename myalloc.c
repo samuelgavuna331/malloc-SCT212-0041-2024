@@ -116,6 +116,7 @@ void *memory = sbrk((intptr_t)total);
 
     return block;
 }
+
 /* Allocate memory using the first-fit placement policy. */
 void *my_malloc(size_t size)
 {
@@ -134,6 +135,26 @@ void *my_malloc(size_t size)
 
     while (current != NULL) {
         if (current->free && current->size >= aligned_size) {
+
+            /* Split if the remainder can hold a header and 16 bytes. */
+            if (current->size - aligned_size >= HDR + ALIGNMENT) {
+
+                block_t *remainder = (block_t *)(
+                    (char *)payload(current) + aligned_size
+                );
+
+                remainder->size = current->size - aligned_size - HDR;
+                remainder->next = current->next;
+                remainder->free = 1;
+                remainder->magic = BLOCK_MAGIC;
+
+                current->size = aligned_size;
+                current->next = remainder;
+
+                if (free_tail == current)
+                    free_tail = remainder;
+            }
+
             current->free = 0;
             return payload(current);
         }
@@ -141,13 +162,13 @@ void *my_malloc(size_t size)
         current = current->next;
     }
 
-    /* No suitable free block exists, so grow the heap. */
+    /* Grow the heap when no suitable free block exists. */
     block_t *new_block = grow(aligned_size);
 
     if (new_block == NULL)
         return NULL;
 
-    new_block->free = 0;
-
-    return payload(new_block);
+    /* The new block is now in the free list.
+       Let the normal first-fit logic allocate and split it. */
+    return my_malloc(size);
 }
