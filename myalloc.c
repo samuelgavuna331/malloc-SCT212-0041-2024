@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
 /* Every returned payload must be aligned to 16 bytes. */
 #define ALIGNMENT 16
 
@@ -234,4 +235,120 @@ void my_free(void *ptr)
 
     /* Merge all physically adjacent free blocks. */
     coalesce();
+}
+/* Allocate memory for an array and initialize it to zero. */
+void *my_calloc(size_t nmemb, size_t size)
+{
+    /* Prevent multiplication overflow. */
+    if (nmemb != 0 && size > SIZE_MAX / nmemb)
+        return NULL;
+
+    size_t total = nmemb * size;
+
+    /* Allocate the required memory. */
+    void *ptr = my_malloc(total);
+
+    if (ptr == NULL)
+        return NULL;
+
+    /* Initialize all allocated bytes to zero. */
+    memset(ptr, 0, total);
+
+    return ptr;
+}
+
+/* Resize an existing allocation. */
+void *my_realloc(void *ptr, size_t size)
+{
+    /* NULL behaves like a normal allocation. */
+    if (ptr == NULL)
+        return my_malloc(size);
+
+    /* A zero-size request frees the block. */
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
+    }
+
+    /* Align the requested size. */
+    size_t aligned_size = align_up(size);
+
+    if (aligned_size == 0)
+        return NULL;
+
+    /* Find the existing block in our allocator's list. */
+    block_t *block = header(ptr);
+    block_t *current = free_head;
+
+    while (current != NULL && current != block)
+        current = current->next;
+
+    /* Reject pointers that are not valid allocated blocks. */
+    if (current == NULL || block->magic != BLOCK_MAGIC || block->free)
+        return NULL;
+
+    /* If the existing block is large enough, reuse it. */
+    if (block->size >= aligned_size)
+        return ptr;
+
+    /* Try to absorb the next physically adjacent free block. */
+    block_t *next = block->next;
+
+    if (next != NULL &&
+        next->free &&
+        (char *)payload(block) + block->size == (char *)next &&
+        block->size <= SIZE_MAX - HDR - next->size) {
+
+        size_t combined_size = block->size + HDR + next->size;
+
+        if (combined_size >= aligned_size) {
+
+            /* Remove the next block from the free list. */
+            block->size = combined_size;
+            block->next = next->next;
+
+            if (free_tail == next)
+                free_tail = block;
+
+            /* Split any sufficiently large unused remainder. */
+            if (combined_size - aligned_size >= HDR + ALIGNMENT) {
+
+                block_t *remainder = (block_t *)(
+                    (char *)payload(block) + aligned_size
+                );
+
+                remainder->size = combined_size - aligned_size - HDR;
+                remainder->next = block->next;
+                remainder->free = 1;
+                remainder->magic = BLOCK_MAGIC;
+
+                block->size = aligned_size;
+                block->next = remainder;
+
+                if (free_tail == block)
+                    free_tail = remainder;
+            }
+
+            return ptr;
+        }
+    }
+
+    /* Allocate a new block if in-place resizing is impossible. */
+    void *new_ptr = my_malloc(size);
+
+    if (new_ptr == NULL)
+        return NULL;
+
+    /* Copy the smaller of the old and new requested sizes. */
+    size_t copy_size = block->size;
+
+    if (copy_size > size)
+        copy_size = size;
+
+    memcpy(new_ptr, ptr, copy_size);
+
+    /* Release the old allocation. */
+    my_free(ptr);
+
+    return new_ptr;
 }
