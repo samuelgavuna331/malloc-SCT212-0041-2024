@@ -172,3 +172,66 @@ void *my_malloc(size_t size)
        Let the normal first-fit logic allocate and split it. */
     return my_malloc(size);
 }
+
+/* Merge physically adjacent free blocks. */
+static void coalesce(void)
+{
+    block_t *current = free_head;
+
+    while (current != NULL && current->next != NULL) {
+        block_t *next = current->next;
+
+        /* Merge only if both blocks are free and physically adjacent. */
+        if (current->free && next->free &&
+            (char *)payload(current) + current->size == (char *)next) {
+
+            /* Absorb the next block and its header. */
+            current->size += HDR + next->size;
+            current->next = next->next;
+
+            /* Update the tail if the removed block was the tail. */
+            if (free_tail == next)
+                free_tail = current;
+        } else {
+            current = current->next;
+        }
+    }
+}
+
+/* Release an allocated block. */
+void my_free(void *ptr)
+{
+    /* Ignore NULL pointers. */
+    if (ptr == NULL)
+        return;
+
+    /* Find the corresponding block header. */
+    block_t *block = header(ptr);
+
+    /* Verify that this header belongs to our allocator. */
+    block_t *current = free_head;
+
+    while (current != NULL && current != block) {
+        current = current->next;
+    }
+
+    /* Reject pointers that do not belong to the allocator. */
+    if (current == NULL || block->magic != BLOCK_MAGIC) {
+        const char message[] = "my_free: invalid pointer\n";
+        write(STDERR_FILENO, message, sizeof(message) - 1);
+        return;
+    }
+
+    /* Detect double frees. */
+    if (block->free) {
+        const char message[] = "my_free: double free detected\n";
+        write(STDERR_FILENO, message, sizeof(message) - 1);
+        return;
+    }
+
+    /* Mark the block as free. */
+    block->free = 1;
+
+    /* Merge all physically adjacent free blocks. */
+    coalesce();
+}
