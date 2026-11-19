@@ -2,13 +2,13 @@
 
 **Student Name:** Samuel Gavuna  
 **Student ID:** SCT212-0041/2024  
-**Course:** Systems Programming
+
 
 ## 1. Project Description
 
-This project implements a simple dynamic memory allocator in C. It provides functions for allocating, releasing and managing memory without relying directly on the standard `malloc()` implementation for its custom allocation operations.
+This project implements a simple dynamic memory allocator in C. It provides functions for allocating, releasing and managing memory without relying directly on the standard malloc() implementation for its custom allocation operations.
 
-The allocator uses `sbrk()` to request memory from the operating system. It supports first-fit and best-fit allocation policies, block splitting, coalescing, and heap statistics.
+The allocator uses sbrk() to request memory from the operating system. It supports first-fit and best-fit allocation policies, block splitting, coalescing, and heap statistics.
 
 ## 2. Building and Running the Project
 
@@ -22,15 +22,15 @@ make
 
 Alternatively, run the tests directly using:
 
-```bash
+
 make test
-```
+
 
 To run the memory allocator benchmark:
 
-```bash
+
 make bench
-```
+
 
 To remove generated binaries and object files:
 
