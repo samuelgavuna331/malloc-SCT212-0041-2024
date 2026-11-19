@@ -2,3 +2,4 @@ test_myalloc
 bench
 task1_check
 *.o
+task2_check

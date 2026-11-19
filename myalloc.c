@@ -1,9 +1,11 @@
 
+#ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
+#endif
 
 #include <stddef.h>
 #include <stdint.h>
-
+#include <unistd.h>
 /* Every returned payload must be aligned to 16 bytes. */
 #define ALIGNMENT 16
 
@@ -44,3 +46,73 @@ static inline block_t *header(void *ptr)
 /* Ensure the header size is a multiple of 16. */
 _Static_assert(HDR % ALIGNMENT == 0,
                "Block header size must be 16-byte aligned");
+/* Free-list boundaries. */
+static block_t *free_head = NULL;
+static block_t *free_tail = NULL;
+
+/* Total bytes requested from the operating system. */
+static size_t heap_bytes = 0;
+
+/* Obtain more memory from the operating system. */
+static block_t *grow(size_t need)
+{
+    const size_t CHUNK_SIZE = 64 * 1024;
+
+    /* Make sure the new block can hold its header and payload. */
+    if (need > SIZE_MAX - HDR)
+        return NULL;
+
+    size_t total = need + HDR;
+
+    /* Obtain at least 64 KB unless the request is larger. */
+    if (total < CHUNK_SIZE)
+        total = CHUNK_SIZE;
+
+    /* Find the current program break. */
+    void *current_break = sbrk(0);
+
+    if (current_break == (void *)-1)
+        return NULL;
+
+    /* Calculate padding needed to align the block header. */
+    uintptr_t address = (uintptr_t)current_break;
+    size_t padding = (ALIGNMENT - (address % ALIGNMENT)) % ALIGNMENT;
+    if (total > SIZE_MAX - padding)
+        return NULL;
+
+    total += padding;
+
+/* Ensure the request fits in sbrk's signed increment type. */
+if (total > (size_t)INTPTR_MAX)
+    return NULL;
+
+/* Prevent heap byte counter overflow. */
+if (heap_bytes > SIZE_MAX - total)
+    return NULL;
+
+/* Request the memory. */
+void *memory = sbrk((intptr_t)total);
+    if (memory == (void *)-1)
+        return NULL;
+
+    /* Create the new free block. */
+    block_t *block = (block_t *)((char *)memory + padding);
+
+    block->size = total - padding - HDR;
+    block->next = NULL;
+    block->free = 1;
+    block->magic = BLOCK_MAGIC;
+
+    /* Add the block to the end of the free list. */
+    if (free_head == NULL) {
+        free_head = block;
+        free_tail = block;
+    } else {
+        free_tail->next = block;
+        free_tail = block;
+    }
+
+    heap_bytes += total;
+
+    return block;
+}
